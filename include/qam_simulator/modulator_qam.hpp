@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <concepts>
+#include <fstream>
 #include <memory_resource>
 #include <span>
 #include <stdexcept>
@@ -16,7 +17,7 @@ concept Numeric = std::is_arithmetic_v<T>;
  *
  * This class supports QPSK (4-QAM), 16-QAM, and 64-QAM modulation schemes.
  * It maps a sequence of bits to complex symbols based on the constellation
- * diagram.
+ * diagram using Gray coding to minimize bit errors.
  *
  * @tparam Levels Number of constellation points (must be 4, 16, or 64)
  * @tparam T      Numeric type used for representing constellation coordinates
@@ -84,20 +85,34 @@ class ModulatorQAM {
 
    private:
     /**
-     * @brief Generate the constellation diagram based on the specified
-     * modulation scheme
+     * @brief Generate the constellation diagram with Gray coding
      */
     void generateConstellation() {
-        if constexpr (Levels == 4) {  // QPSK
+        if constexpr (Levels == 4) {  // QPSK with natural Gray coding
             constellation_ = {{+1, +1}, {-1, +1}, {-1, -1}, {+1, -1}};
-        } else if constexpr (Levels == 16) {  // 16QAM
-            for (int i = -3; i <= 3; i += 2)
-                for (int j = -3; j <= 3; j += 2)
-                    constellation_.emplace_back(i, j);
-        } else if constexpr (Levels == 64) {  // 64QAM
-            for (int i = -7; i <= 7; i += 2)
-                for (int j = -7; j <= 7; j += 2)
-                    constellation_.emplace_back(i, j);
+        } else if constexpr (Levels == 16) {  // 16QAM with Gray coding
+            const int pam_levels[] = {-3, -1, 1, 3};
+            for (int index = 0; index < Levels; ++index) {
+                int upper_bits = (index >> 2) & 0x03;
+                int lower_bits = index & 0x03;
+                int gray_upper = to_gray(upper_bits);
+                int gray_lower = to_gray(lower_bits);
+                T re = static_cast<T>(pam_levels[gray_upper]);
+                T im = static_cast<T>(pam_levels[gray_lower]);
+                constellation_.emplace_back(re, im);
+            }
+        } else if constexpr (Levels == 64) {  // 64QAM with Gray coding
+            const int pam_levels[] = {-7, -5, -3, -1, 1, 3, 5, 7};
+            for (int index = 0; index < Levels; ++index) {
+                int gray_j = (index >> 3) & 0x07;
+                int gray_i = index & 0x07;
+                int j = from_gray(gray_j);
+                int i = from_gray(gray_i);
+                T re = static_cast<T>(pam_levels[j]);
+                T im = static_cast<T>(pam_levels[i]);
+
+                constellation_.emplace_back(re, im);
+            }
         }
 
         for (auto& [re, im] : constellation_) {
@@ -110,6 +125,16 @@ class ModulatorQAM {
             avg_power_ += re * re + im * im;
         }
         avg_power_ /= Levels;
+    }
+
+    static int to_gray(int x) { return x ^ (x >> 1); }
+
+    static int from_gray(int g) {
+        int b = 0;
+        for (; g; g >>= 1) {
+            b ^= g;
+        }
+        return b;
     }
 
     std::pmr::polymorphic_allocator<T> alloc_;

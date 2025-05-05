@@ -33,7 +33,7 @@ int main() {
     using Demodulator = DemodulatorQAM<16, float>;
     using NoiseAdder = NoiseAdder<float>;
 
-    size_t num_bits = 262144;
+    size_t num_bits = 1073741824;
 
     std::vector<uint8_t> bits = generateRandomBits(num_bits);
 

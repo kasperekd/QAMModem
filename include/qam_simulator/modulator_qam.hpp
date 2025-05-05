@@ -9,8 +9,11 @@
 #include <utility>
 #include <vector>
 
+#ifndef _NUMERIC
 template <typename T>
 concept Numeric = std::is_arithmetic_v<T>;
+#define _NUMERIC
+#endif  // !_NUMERIC
 
 /**
  * @brief Template class for QAM (Quadrature Amplitude Modulation) modulator.

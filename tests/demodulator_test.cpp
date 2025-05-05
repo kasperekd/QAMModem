@@ -53,7 +53,7 @@ TYPED_TEST(DemodulatorTest, ConstellationMapping) {
     }
 
     for (size_t i = 0; i < symbols.size(); ++i) {
-        auto bits = demodulator.demodulate_hard({symbols[i]});
+        auto bits = demodulator.demodulate_hard({&symbols[i], 1});
 
         int best_idx = -1;
         float best_dist = std::numeric_limits<float>::infinity();

@@ -4,11 +4,15 @@
 #include <complex>
 #include <concepts>
 #include <memory_resource>
+#include <span>
 #include <stdexcept>
 #include <vector>
 
+#ifndef _NUMERIC
 template <typename T>
 concept Numeric = std::is_arithmetic_v<T>;
+#define _NUMERIC
+#endif  // !_NUMERIC
 
 /**
  * @brief Template class for QAM (Quadrature Amplitude Modulation) demodulator.
@@ -56,24 +60,7 @@ class DemodulatorQAM {
      * @return Vector of recovered bits
      */
     std::pmr::vector<uint8_t> demodulate_hard(
-        const std::vector<std::pair<T, T>>& symbols) const {
-        std::pmr::vector<uint8_t> bits(alloc_);
-        for (const auto& s : symbols) {
-            int best_idx = 0;
-            float best_dist = distance_squared(s, constellation_[0]);
-            for (size_t idx = 1; idx < Levels; ++idx) {
-                float dist = distance_squared(s, constellation_[idx]);
-                if (dist < best_dist) {
-                    best_dist = dist;
-                    best_idx = idx;
-                }
-            }
-            for (int j = 0; j < BitsPerSymbol; ++j) {
-                bits.push_back(bit_patterns_[best_idx][j] ? 1 : 0);
-            }
-        }
-        return bits;
-    }
+        std::span<const std::pair<T, T>> symbols) const;
 
     /**
      * @brief Perform soft decision demodulation of received symbols.
@@ -86,9 +73,10 @@ class DemodulatorQAM {
      * @return Vector of LLR values for each bit
      */
     std::pmr::vector<float> demodulate_soft(
-        const std::vector<std::pair<T, T>>& symbols, float sigma = 1.0f) const {
+        std::span<const std::pair<T, T>> symbols, float sigma) const {
         std::pmr::vector<float> llrs(alloc_);
         float sigma_sq = sigma * sigma;
+
         for (const auto& s : symbols) {
             for (int j = 0; j < BitsPerSymbol; ++j) {
                 float min_dist0 = INFINITY;
@@ -106,6 +94,7 @@ class DemodulatorQAM {
                 llrs.push_back(llr);
             }
         }
+
         return llrs;
     }
 
@@ -216,4 +205,25 @@ void DemodulatorQAM<Levels, T>::generateBitPatterns() {
         }
         bit_patterns_.push_back(pattern);
     }
+}
+
+template <int Levels, Numeric T>
+std::pmr::vector<uint8_t> DemodulatorQAM<Levels, T>::demodulate_hard(
+    std::span<const std::pair<T, T>> symbols) const {
+    std::pmr::vector<uint8_t> bits(alloc_);
+    for (const auto& s : symbols) {
+        int best_idx = 0;
+        float best_dist = distance_squared(s, constellation_[0]);
+        for (size_t idx = 1; idx < Levels; ++idx) {
+            float dist = distance_squared(s, constellation_[idx]);
+            if (dist < best_dist) {
+                best_dist = dist;
+                best_idx = idx;
+            }
+        }
+        for (int j = 0; j < BitsPerSymbol; ++j) {
+            bits.push_back(bit_patterns_[best_idx][j] ? 1 : 0);
+        }
+    }
+    return bits;
 }

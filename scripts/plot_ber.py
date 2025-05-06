@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import glob
 import os
 
-file_paths = glob.glob('./build/ber_*.csv')
+file_paths = glob.glob('./ber_*.csv')
 
 plt.figure(figsize=(10, 6))
 

@@ -20,7 +20,7 @@ if(USE_PMR)
     add_compile_options(-DUSE_PMR)
 endif()
 
-# Корневые пути
+# root
 set(PROJECT_ROOT ${CMAKE_SOURCE_DIR})
 set(INCLUDE_DIR ${PROJECT_ROOT}/include)
 set(SRC_DIR ${PROJECT_ROOT}/src)

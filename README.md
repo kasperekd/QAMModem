@@ -43,7 +43,7 @@ ctest --test-dir build
 
 ### 3. Run the Application
 ```bash
-./build/qam_simulator
+./build/qam_simulator -20 20 1 4 100000 25
 ```
 
 ### 4. Generate BER vs SNR Plot

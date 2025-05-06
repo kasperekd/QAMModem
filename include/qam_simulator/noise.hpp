@@ -9,10 +9,7 @@
 
 #ifndef _NUMERIC
 /**
- * @brief Concept for numeric types (arithmetic types)
- *
- * This concept checks if a type is an arithmetic type (e.g., int, float,
- * double).
+ * @brief Concept to constrain types to arithmetic types.
  */
 template <typename T>
 concept Numeric = std::is_arithmetic_v<T>;

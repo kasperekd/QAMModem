@@ -10,6 +10,9 @@
 #include <vector>
 
 #ifndef _NUMERIC
+/**
+ * @brief Concept to constrain types to arithmetic types.
+ */
 template <typename T>
 concept Numeric = std::is_arithmetic_v<T>;
 #define _NUMERIC

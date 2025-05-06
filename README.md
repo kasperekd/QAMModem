@@ -59,7 +59,6 @@ This runs the Python script `plot_ber.py` to generate a plot of BER vs SNR.
 
 - **SIMD**: Enabled by default (`-DENABLE_SIMD=ON`). Disable with `-DENABLE_SIMD=OFF`.
 - **Memory Management**: Uses `std::pmr` by default (`-DUSE_PMR=ON`). Disable with `-DUSE_PMR=OFF`.
-- **Customization**: Modify `SimulationParams` in `main.cpp` to adjust SNR ranges, threads, etc.
 
 ---
 

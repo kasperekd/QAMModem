@@ -86,6 +86,8 @@ class ModulatorQAM {
      */
     T getAveragePower() const { return avg_power_; }
 
+    static constexpr int getBitsPerSymbol() { return BitsPerSymbol; }
+
    private:
     /**
      * @brief Generate the constellation diagram with Gray coding

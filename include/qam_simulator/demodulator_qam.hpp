@@ -9,6 +9,9 @@
 #include <vector>
 
 #ifndef _NUMERIC
+/**
+ * @brief Concept to constrain types to arithmetic types.
+ */
 template <typename T>
 concept Numeric = std::is_arithmetic_v<T>;
 #define _NUMERIC
@@ -81,13 +84,13 @@ class DemodulatorQAM {
             for (int j = 0; j < BitsPerSymbol; ++j) {
                 float min_dist0 = INFINITY;
                 float min_dist1 = INFINITY;
+
                 for (int idx = 0; idx < Levels; ++idx) {
-                    bool bit = bit_patterns_[idx][j];
-                    float dist = distance_squared(s, constellation_[idx]);
-                    if (bit) {
-                        if (dist < min_dist1) min_dist1 = dist;
+                    float d2 = distance_squared(s, constellation_[idx]);
+                    if (bit_patterns_[idx][j]) {
+                        min_dist1 = std::min(min_dist1, d2);
                     } else {
-                        if (dist < min_dist0) min_dist0 = dist;
+                        min_dist0 = std::min(min_dist0, d2);
                     }
                 }
                 float llr = (min_dist0 - min_dist1) / (2.0f * sigma_sq);
@@ -132,17 +135,22 @@ class DemodulatorQAM {
 
    private:
     /**
-     * @brief Generate constellation diagram based on modulation scheme
+     * @brief Generate constellation diagram based on modulation scheme.
+     *
+     * For 4-QAM, uses QPSK configuration. For 16-QAM and 64-QAM, uses
+     * PAM-based grid with Gray-coded symbol mapping.
      */
     void generateConstellation();
 
     /**
-     * @brief Generate bit patterns for each constellation point
+     * @brief Generate bit patterns for each constellation point.
+     *
+     * Bit patterns are derived from symbol index using binary encoding.
      */
     void generateBitPatterns();
 
     /**
-     * @brief Convert Gray-coded index to binary
+     * @brief Convert Gray-coded index to binary.
      *
      * @param g Gray code value
      * @return Binary equivalent
@@ -155,18 +163,27 @@ class DemodulatorQAM {
         return b;
     }
 
-    std::pmr::polymorphic_allocator<T> alloc_;
-    std::pmr::vector<std::pair<T, T>> constellation_;
-    std::pmr::vector<std::pmr::vector<bool>> bit_patterns_;
+    std::pmr::polymorphic_allocator<T> alloc_;         ///< Memory allocator
+    std::pmr::vector<std::pair<T, T>> constellation_;  ///< Constellation points
+    std::pmr::vector<std::pmr::vector<bool>>
+        bit_patterns_;  ///< Bit patterns for each constellation point
 };
 
 // --- Specializations for constellation generation ---
+
+/**
+ * @brief Specialization: Generate constellation points for QAM schemes.
+ *
+ * Handles QPSK (4-QAM), 16-QAM and 64-QAM with Gray code mapping.
+ */
 template <int Levels, Numeric T>
 void DemodulatorQAM<Levels, T>::generateConstellation() {
     constellation_.clear();
-    if constexpr (Levels == 4) {  // QPSK with natural Gray coding
+    if constexpr (Levels == 4) {
+        // QPSK with natural Gray coding
         constellation_ = {{+1, +1}, {-1, +1}, {-1, -1}, {+1, -1}};
-    } else if constexpr (Levels == 16) {  // 16QAM with Gray coding
+    } else if constexpr (Levels == 16) {
+        // 16-QAM with Gray coding
         const int pam_levels[] = {-3, -1, 1, 3};
         for (int idx = 0; idx < Levels; ++idx) {
             int upper_bits = (idx >> 2) & 0x03;
@@ -177,7 +194,8 @@ void DemodulatorQAM<Levels, T>::generateConstellation() {
             T im = static_cast<T>(pam_levels[gray_lower]);
             constellation_.emplace_back(re, im);
         }
-    } else if constexpr (Levels == 64) {  // 64QAM with Gray coding
+    } else if constexpr (Levels == 64) {
+        // 64-QAM with Gray coding
         const int pam_levels[] = {-7, -5, -3, -1, 1, 3, 5, 7};
         for (int idx = 0; idx < Levels; ++idx) {
             int gray_j = (idx >> 3) & 0x07;
@@ -191,7 +209,9 @@ void DemodulatorQAM<Levels, T>::generateConstellation() {
     }
 }
 
-// --- Bit pattern generation ---
+/**
+ * @brief Specialization: Generate binary bit patterns for constellation points.
+ */
 template <int Levels, Numeric T>
 void DemodulatorQAM<Levels, T>::generateBitPatterns() {
     bit_patterns_.clear();
@@ -207,6 +227,15 @@ void DemodulatorQAM<Levels, T>::generateBitPatterns() {
     }
 }
 
+/**
+ * @brief Specialization: Hard demodulation implementation.
+ *
+ * For each received symbol, finds the closest constellation point and appends
+ * its bit pattern.
+ *
+ * @param symbols Received symbols
+ * @return Vector of demodulated bits
+ */
 template <int Levels, Numeric T>
 std::pmr::vector<uint8_t> DemodulatorQAM<Levels, T>::demodulate_hard(
     std::span<const std::pair<T, T>> symbols) const {

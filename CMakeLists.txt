@@ -6,7 +6,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(ENABLE_SIMD "Enable SIMD optimizations (AVX2/FMA)" ON)
 option(BUILD_TESTS "Build unit tests with GoogleTest" OFF)
-option(USE_PMR "Use std::pmr for memory management" ON)
+option(USE_PMR "Use std::pmr for memory management" OFF)
 option(BUILD_APPLICATION "Build main application" ON)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2")
@@ -53,7 +53,6 @@ endif()
 if(BUILD_APPLICATION)
     add_library(Utils STATIC
         ${SRC_DIR}/utils/csv_writer.cpp
-        ${SRC_DIR}/utils/random.cpp
     )
     target_include_directories(Utils PUBLIC ${INCLUDE_DIR})
     if(USE_PMR)

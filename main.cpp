@@ -1,3 +1,6 @@
+// #define SOLO
+#ifdef SOLO
+#include <chrono>
 #include <iomanip>
 #include <iostream>
 #include <numeric>
@@ -29,33 +32,35 @@ void printBits(const std::string& label, const Vector& bits,
 }
 
 int main() {
-    using Modulator = ModulatorQAM<16, float>;
-    using Demodulator = DemodulatorQAM<16, float>;
+    using Modulator = ModulatorQAM<64, float>;
+    using Demodulator = DemodulatorQAM<64, float>;
     using NoiseAdder = NoiseAdder<float>;
 
-    size_t num_bits = 1073741824;
+    // size_t num_bits = 1073741824 / 256;
+    // size_t num_bits = 1610612736 / 256;
+    size_t num_bits = 10000002;
 
     std::vector<uint8_t> bits = generateRandomBits(num_bits);
 
-    constexpr int BitsPerSymbol = 4;
-    if (bits.size() % BitsPerSymbol != 0) {
-        std::cerr << "Error: Bit count must be divisible by " << BitsPerSymbol
-                  << std::endl;
-        return 1;
-    }
+    // constexpr int BitsPerSymbol = 4;
+    // if (bits.size() % BitsPerSymbol != 0) {
+    //     std::cerr << "Error: Bit count must be divisible by " <<
+    //     BitsPerSymbol
+    //               << std::endl;
+    //     return 1;
+    // }
     std::cout << "=== QAM Simulation ===" << std::endl;
 
-    // Модуляция
+    // mod
     Modulator modulator;
     auto symbols = modulator.modulate(bits);
-    std::cout << "Modulated symbols: " << symbols.size() << std::endl;
 
-    // Добавление шума
-    NoiseAdder noise_adder(8.0);
+    // noise
+    NoiseAdder noise_adder(-20);  // SNR
     auto noisy_symbols = noise_adder.addNoise(symbols);
     std::cout << "Added AWGN noise" << std::endl;
 
-    // Демодуляция
+    // demod
     Demodulator demodulator;
     auto recovered_bits = demodulator.demodulate_hard(noisy_symbols);
     std::cout << "Demodulated bits: " << recovered_bits.size() << std::endl;
@@ -71,7 +76,7 @@ int main() {
         return 1;
     }
 
-    // ошибоки
+    // err
     size_t errors = 0;
     for (size_t i = 0; i < bits.size(); ++i) {
         if (bits[i] != recovered_bits[i]) errors++;
@@ -87,3 +92,12 @@ int main() {
 
     return 0;
 }
+#else
+#include "qam_simulator/pipeline.hpp"
+
+int main(int argc, char** argv) {
+    SimulationParams params = parse_args(argc, argv);
+    run_all_simulations(params);
+    return 0;
+}
+#endif  // SOLO

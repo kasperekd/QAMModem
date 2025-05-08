@@ -66,7 +66,4 @@ This runs the Python script `plot_ber.py` to generate a plot of BER vs SNR.
 After running simulations, CSV files are generated. The Python script `plot_ber.py` reads these files and creates a combined plot.
 
 ### Example Output:
-![BER vs SNR Plot](./img/image.png)  
-*Replace `placeholder.png` with your actual screenshot of the BER vs SNR graph.*
-
----
+![BER vs SNR Plot](./img/image.png) 

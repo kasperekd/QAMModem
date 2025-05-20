@@ -1,55 +1,38 @@
 #pragma once
 
 #include <cmath>
-#include <concepts>
-#include <fstream>
-#include <memory_resource>
+#include <cstdint>
 #include <span>
 #include <stdexcept>
 #include <utility>
 #include <vector>
 
-#ifndef _NUMERIC
 /**
- * @brief Concept to constrain types to arithmetic types.
- */
-template <typename T>
-concept Numeric = std::is_arithmetic_v<T>;
-#define _NUMERIC
-#endif  // !_NUMERIC
-
-/**
- * @brief Template class for QAM (Quadrature Amplitude Modulation) modulator.
+ * @brief Class for QAM (Quadrature Amplitude Modulation) modulator.
  *
  * This class supports QPSK (4-QAM), 16-QAM, and 64-QAM modulation schemes.
  * It maps a sequence of bits to complex symbols based on the constellation
  * diagram using Gray coding to minimize bit errors.
- *
- * @tparam Levels Number of constellation points (must be 4, 16, or 64)
- * @tparam T      Numeric type used for representing constellation coordinates
  */
-template <int Levels, Numeric T>
 class ModulatorQAM {
    public:
     /// @brief Type used for numeric representation of constellation points
-    using value_type = T;
-
-    /// @brief Number of bits encoded in each symbol
-    static constexpr int BitsPerSymbol = std::log2(Levels);
+    using value_type = float;
 
     /**
      * @brief Construct a new ModulatorQAM object
      *
+     * @param levels_in Number of constellation points (must be 4, 16, or 64).
      * @param scale_factor Scaling factor applied to all constellation points
-     * @param resource Memory resource for memory allocation
      */
-    explicit ModulatorQAM(
-        T scale_factor = T(1),
-        std::pmr::memory_resource* resource = std::pmr::get_default_resource())
-        : alloc_(resource), scale_factor_(scale_factor) {
-        static_assert(
-            Levels == 4 || Levels == 16 || Levels == 64,
-            "Only QPSK (4), 16QAM (16) and 64QAM (64) are supported.");
+    explicit ModulatorQAM(int levels_in, value_type scale_factor = 1.0f)
+        : levels_count_(levels_in),
+          bits_per_symbol_(calculate_bits_per_symbol(levels_in)),
+          scale_factor_(scale_factor) {
+        if (levels_count_ != 4 && levels_count_ != 16 && levels_count_ != 64) {
+            throw std::invalid_argument(
+                "ModulatorQAM: Only 4, 16, and 64 QAM levels are supported");
+        }
         generateConstellation();
     }
 
@@ -62,91 +45,104 @@ class ModulatorQAM {
      * @throws std::invalid_argument if number of bits is not divisible by
      * BitsPerSymbol
      */
-    std::pmr::vector<std::pair<T, T>> modulate(
+    std::vector<std::pair<value_type, value_type>> modulate(
         std::span<const uint8_t> bits) const {
-        if (bits.size() % BitsPerSymbol != 0)
+        if (bits.size() % bits_per_symbol_ != 0) {
             throw std::invalid_argument(
                 "Bit count must be divisible by BitsPerSymbol");
-
-        size_t num_symbols = bits.size() / BitsPerSymbol;
-        std::pmr::vector<std::pair<T, T>> symbols(num_symbols, alloc_);
-
-        for (size_t i = 0; i < num_symbols; ++i) {
-            uint8_t index = 0;
-            for (int j = 0; j < BitsPerSymbol; ++j) {
-                index = (index << 1) | bits[i * BitsPerSymbol + j];
-            }
-            symbols[i] = constellation_[index];
+        }
+        if (bits.empty()) {
+            return {};
         }
 
+        size_t num_symbols = bits.size() / bits_per_symbol_;
+        std::vector<std::pair<value_type, value_type>> symbols(num_symbols);
+
+        for (size_t i = 0; i < num_symbols; ++i) {
+            int symbol_index = 0;
+            for (int j = 0; j < bits_per_symbol_; ++j) {
+                symbol_index =
+                    (symbol_index << 1) | bits[i * bits_per_symbol_ + j];
+            }
+            symbols[i] = constellation_[symbol_index];
+        }
         return symbols;
     }
 
     /**
      * @brief Get the average power of the constellation
-     *
-     * @return Average power (mean squared magnitude of constellation points)
      */
-    T getAveragePower() const { return avg_power_; }
+    value_type getAveragePower() const { return avg_power_; }
 
-    static constexpr int getBitsPerSymbol() { return BitsPerSymbol; }
+    /**
+     * @brief Get the number of bits encoded in each symbol
+     */
+    constexpr int getBitsPerSymbol() const noexcept { return bits_per_symbol_; }
+
+    /**
+     * @brief Get the number of constellation points
+     */
+    constexpr int getLevelsCount() const noexcept { return levels_count_; }
 
    private:
-    /**
-     * @brief Generate the constellation diagram with Gray coding
-     */
+    static constexpr int calculate_bits_per_symbol(int levels) {
+        if (levels == 4) return 2;
+        if (levels == 16) return 4;
+        if (levels == 64) return 6;
+        throw std::logic_error(
+            "Invalid levels value for BitsPerSymbol calculation");
+    }
+
     void generateConstellation() {
-        if constexpr (Levels == 4) {  // QPSK with natural Gray coding
-            constellation_ = {{+1, +1}, {-1, +1}, {-1, -1}, {+1, -1}};
-        } else if constexpr (Levels == 16) {  // 16QAM with Gray coding
-            const int pam_levels[] = {-3, -1, 1, 3};
-            for (int index = 0; index < Levels; ++index) {
-                int upper_bits = (index >> 2) & 0x03;
-                int lower_bits = index & 0x03;
-                int gray_upper = to_gray(upper_bits);
-                int gray_lower = to_gray(lower_bits);
-                T re = static_cast<T>(pam_levels[gray_upper]);
-                T im = static_cast<T>(pam_levels[gray_lower]);
-                constellation_.emplace_back(re, im);
+        constellation_.clear();
+        constellation_.reserve(levels_count_);
+
+        if (levels_count_ == 4) {  // QPSK
+            constellation_.emplace_back(1.0f, 1.0f);
+            constellation_.emplace_back(-1.0f, 1.0f);
+            constellation_.emplace_back(-1.0f, -1.0f);
+            constellation_.emplace_back(1.0f, -1.0f);
+        } else if (levels_count_ == 16) {  // 16-QAM
+            const value_type pam_levels_arr[] = {-3.0f, -1.0f, 1.0f, 3.0f};
+            for (int index = 0; index < levels_count_; ++index) {
+                int val_x_bits = (index >> (bits_per_symbol_ / 2));
+                int val_y_bits = (index & ((1 << (bits_per_symbol_ / 2)) - 1));
+                int gray_idx_x = val_x_bits ^ (val_x_bits >> 1);
+                int gray_idx_y = val_y_bits ^ (val_y_bits >> 1);
+                constellation_.emplace_back(pam_levels_arr[gray_idx_x],
+                                            pam_levels_arr[gray_idx_y]);
             }
-        } else if constexpr (Levels == 64) {  // 64QAM with Gray coding
-            const int pam_levels[] = {-7, -5, -3, -1, 1, 3, 5, 7};
-            for (int index = 0; index < Levels; ++index) {
-                int gray_j = (index >> 3) & 0x07;
-                int gray_i = index & 0x07;
-                int j = from_gray(gray_j);
-                int i = from_gray(gray_i);
-                T re = static_cast<T>(pam_levels[j]);
-                T im = static_cast<T>(pam_levels[i]);
-
-                constellation_.emplace_back(re, im);
+        } else if (levels_count_ == 64) {  // 64-QAM
+            const value_type pam_levels_arr[] = {-7.0f, -5.0f, -3.0f, -1.0f,
+                                                 1.0f,  3.0f,  5.0f,  7.0f};
+            for (int index = 0; index < levels_count_; ++index) {
+                int val_x_bits = (index >> (bits_per_symbol_ / 2));
+                int val_y_bits = (index & ((1 << (bits_per_symbol_ / 2)) - 1));
+                int gray_idx_x = val_x_bits ^ (val_x_bits >> 1);
+                int gray_idx_y = val_y_bits ^ (val_y_bits >> 1);
+                constellation_.emplace_back(pam_levels_arr[gray_idx_x],
+                                            pam_levels_arr[gray_idx_y]);
             }
         }
 
-        for (auto& [re, im] : constellation_) {
-            re *= scale_factor_;
-            im *= scale_factor_;
+        avg_power_ = 0.0f;
+        for (auto& point : constellation_) {
+            point.first *= scale_factor_;
+            point.second *= scale_factor_;
+            avg_power_ +=
+                point.first * point.first + point.second * point.second;
         }
-
-        avg_power_ = 0;
-        for (const auto& [re, im] : constellation_) {
-            avg_power_ += re * re + im * im;
+        if (levels_count_ > 0) {
+            avg_power_ /= static_cast<value_type>(levels_count_);
+        } else {
+            avg_power_ = 0.0f;
         }
-        avg_power_ /= Levels;
     }
 
-    static int to_gray(int x) { return x ^ (x >> 1); }
+    const int levels_count_;
+    const int bits_per_symbol_;
+    const value_type scale_factor_;
 
-    static int from_gray(int g) {
-        int b = 0;
-        for (; g; g >>= 1) {
-            b ^= g;
-        }
-        return b;
-    }
-
-    std::pmr::polymorphic_allocator<T> alloc_;
-    std::pmr::vector<std::pair<T, T>> constellation_;
-    T avg_power_;
-    T scale_factor_;
+    std::vector<std::pair<value_type, value_type>> constellation_;
+    value_type avg_power_;
 };

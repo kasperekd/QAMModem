@@ -59,7 +59,10 @@
         "numbers": "cpp",
         "ratio": "cpp",
         "fstream": "cpp",
-        "chrono": "cpp"
+        "chrono": "cpp",
+        "complex": "cpp",
+        "format": "cpp",
+        "ranges": "cpp"
     },
     "C_Cpp.codeAnalysis.clangTidy.checks.disabled": [
         "clang-diagnostic-error"

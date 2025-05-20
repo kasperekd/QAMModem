@@ -1,5 +1,15 @@
 # QAM Simulator
 
+## Main Implementation Location  
+The **primary code** resides in the `old` branch.  
+This branch contains a **simplified version** of the codebase.  
+
+#### Removed for Simplicity:  
+- All C++ templates
+- Optimizations 
+- Soft-decision demodulator  
+- Unit tests 
+
 ## Prerequisites
 
 ### 1. Install Required Tools
@@ -10,14 +20,7 @@ sudo apt-get update
 sudo apt-get install g++ cmake python3 python3-pip
 ```
 
-### 2. Install GoogleTest (Optional)
-Install GoogleTest only if you want to run unit tests:
-
-```bash
-sudo apt-get install libgtest-dev
-```
-
-### 3. Install Python Dependencies
+### 2. Install Python Dependencies
 Install required Python libraries for plotting:
 
 ```bash
@@ -28,37 +31,22 @@ pip3 install pandas matplotlib
 
 ## Build Instructions
 
-### 1. Build Without Tests and SIMD
+### 1. Build
 ```bash
-cmake -B build -S . -DENABLE_SIMD=OFF -DBUILD_TESTS=OFF -DUSE_PMR=ON
+cmake -B build -S .
 cmake --build build
 ```
 
-### 2. Build With Tests and SIMD
-```bash
-cmake -B build -S . -DENABLE_SIMD=ON -DBUILD_TESTS=ON -DUSE_PMR=ON
-cmake --build build
-ctest --test-dir build
-```
-
-### 3. Run the Application
+### 2. Run the Application
 ```bash
 ./build/qam_simulator -20 20 1 4 100000 25
 ```
 
-### 4. Generate BER vs SNR Plot
+### 3. Generate BER vs SNR Plot
 ```bash
 cmake --build build --target plot
 ```
 This runs the Python script `plot_ber.py` to generate a plot of BER vs SNR.
-
----
-
-
-## Notes
-
-- **SIMD**: Enabled by default (`-DENABLE_SIMD=ON`). Disable with `-DENABLE_SIMD=OFF`.
-- **Memory Management**: Uses `std::pmr` by default (`-DUSE_PMR=ON`). Disable with `-DUSE_PMR=OFF`.
 
 ---
 

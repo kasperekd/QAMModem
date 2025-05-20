@@ -1,54 +1,36 @@
 #pragma once
 
 #include <cmath>
-#include <complex>
-#include <concepts>
-#include <memory_resource>
+#include <cstdint>
+#include <limits>
 #include <span>
 #include <stdexcept>
 #include <vector>
 
-#ifndef _NUMERIC
 /**
- * @brief Concept to constrain types to arithmetic types.
- */
-template <typename T>
-concept Numeric = std::is_arithmetic_v<T>;
-#define _NUMERIC
-#endif  // !_NUMERIC
-
-/**
- * @brief Template class for QAM (Quadrature Amplitude Modulation) demodulator.
+ * @brief Class for QAM (Quadrature Amplitude Modulation) demodulator.
  *
- * This class supports hard and soft demodulation for QPSK (4-QAM), 16-QAM, and
+ * This class supports hard demodulation for QPSK (4-QAM), 16-QAM, and
  * 64-QAM. It maps received complex symbols back to bit sequences using
  * constellation matching.
- *
- * @tparam Levels Number of constellation points (must be 4, 16, or 64)
- * @tparam T      Numeric type used for representing constellation coordinates
  */
-template <int Levels, Numeric T>
 class DemodulatorQAM {
    public:
-    /// @brief Number of bits encoded in each symbol
-    static constexpr int BitsPerSymbol = std::log2(Levels);
-
-    /// @brief Number of constellation points
-    static constexpr int LevelsCount = Levels;
-
     /// @brief Type used for numeric representation of constellation points
-    using value_type = T;
+    using value_type = float;
 
     /**
      * @brief Construct a new DemodulatorQAM object
      *
-     * @param resource Memory resource for memory allocation
+     * @param levels_in Number of constellation points (must be 4, 16, or 64).
      */
-    explicit DemodulatorQAM(
-        std::pmr::memory_resource* resource = std::pmr::get_default_resource())
-        : alloc_(resource) {
-        static_assert(Levels == 4 || Levels == 16 || Levels == 64,
-                      "Only 4, 16, and 64 QAM are supported");
+    explicit DemodulatorQAM(int levels_in)
+        : levels_count_(levels_in),
+          bits_per_symbol_(calculate_bits_per_symbol(levels_in)) {
+        if (levels_count_ != 4 && levels_count_ != 16 && levels_count_ != 64) {
+            throw std::invalid_argument(
+                "DemodulatorQAM: Only 4, 16, and 64 QAM levels are supported");
+        }
         generateConstellation();
         generateBitPatterns();
     }
@@ -62,197 +44,115 @@ class DemodulatorQAM {
      * @param symbols Received symbols as pairs of (real, imaginary) values
      * @return Vector of recovered bits
      */
-    std::pmr::vector<uint8_t> demodulate_hard(
-        std::span<const std::pair<T, T>> symbols) const;
-
-    /**
-     * @brief Perform soft decision demodulation of received symbols.
-     *
-     * Computes log-likelihood ratios (LLRs) for each bit based on Euclidean
-     * distances.
-     *
-     * @param symbols Received symbols as pairs of (real, imaginary) values
-     * @param sigma Standard deviation of AWGN noise
-     * @return Vector of LLR values for each bit
-     */
-    std::pmr::vector<float> demodulate_soft(
-        std::span<const std::pair<T, T>> symbols, float sigma) const {
-        std::pmr::vector<float> llrs(alloc_);
-        float sigma_sq = sigma * sigma;
+    std::vector<uint8_t> demodulate_hard(
+        std::span<const std::pair<value_type, value_type>> symbols) const {
+        std::vector<uint8_t> bits;
+        if (symbols.empty()) {
+            return bits;
+        }
+        bits.reserve(symbols.size() * bits_per_symbol_);
 
         for (const auto& s : symbols) {
-            for (int j = 0; j < BitsPerSymbol; ++j) {
-                float min_dist0 = INFINITY;
-                float min_dist1 = INFINITY;
+            int best_idx = 0;
+            value_type best_dist_sq =
+                std::numeric_limits<value_type>::infinity();
 
-                for (int idx = 0; idx < Levels; ++idx) {
-                    float d2 = distance_squared(s, constellation_[idx]);
-                    if (bit_patterns_[idx][j]) {
-                        min_dist1 = std::min(min_dist1, d2);
-                    } else {
-                        min_dist0 = std::min(min_dist0, d2);
-                    }
+            for (int idx = 0; idx < levels_count_; ++idx) {
+                value_type dr = s.first - constellation_[idx].first;
+                value_type di = s.second - constellation_[idx].second;
+                value_type dist_sq = dr * dr + di * di;
+                if (dist_sq < best_dist_sq) {
+                    best_dist_sq = dist_sq;
+                    best_idx = idx;
                 }
-                float llr = (min_dist0 - min_dist1) / (2.0f * sigma_sq);
-                llrs.push_back(llr);
+            }
+            for (int j = 0; j < bits_per_symbol_; ++j) {
+                bits.push_back(bit_patterns_[best_idx][j] ? 1 : 0);
             }
         }
-
-        return llrs;
-    }
-
-    /**
-     * @brief Compute squared Euclidean distance between two points
-     *
-     * @param a First point (real, imaginary)
-     * @param b Second point (real, imaginary)
-     * @return Squared distance
-     */
-    float distance_squared(const std::pair<T, T>& a,
-                           const std::pair<T, T>& b) const {
-        float dr = static_cast<float>(a.first) - static_cast<float>(b.first);
-        float di = static_cast<float>(a.second) - static_cast<float>(b.second);
-        return dr * dr + di * di;
+        return bits;
     }
 
     /**
      * @brief Get the constellation diagram used by the demodulator
-     *
-     * @return Const reference to the constellation vector
      */
-    const std::pmr::vector<std::pair<T, T>>& getConstellation() const {
+    const std::vector<std::pair<value_type, value_type>>& getConstellation()
+        const {
         return constellation_;
     }
 
     /**
      * @brief Get the bit patterns associated with each constellation point
-     *
-     * @return Const reference to the bit pattern vector
      */
-    const std::pmr::vector<std::pmr::vector<bool>>& getBitPatterns() const {
+    const std::vector<std::vector<bool>>& getBitPatterns() const {
         return bit_patterns_;
     }
 
+    /**
+     * @brief Get the number of bits encoded in each symbol
+     */
+    constexpr int getBitsPerSymbol() const noexcept { return bits_per_symbol_; }
+
+    /**
+     * @brief Get the number of constellation points
+     */
+    constexpr int getLevelsCount() const noexcept { return levels_count_; }
+
    private:
-    /**
-     * @brief Generate constellation diagram based on modulation scheme.
-     *
-     * For 4-QAM, uses QPSK configuration. For 16-QAM and 64-QAM, uses
-     * PAM-based grid with Gray-coded symbol mapping.
-     */
-    void generateConstellation();
-
-    /**
-     * @brief Generate bit patterns for each constellation point.
-     *
-     * Bit patterns are derived from symbol index using binary encoding.
-     */
-    void generateBitPatterns();
-
-    /**
-     * @brief Convert Gray-coded index to binary.
-     *
-     * @param g Gray code value
-     * @return Binary equivalent
-     */
-    static int from_gray(int g) {
-        int b = 0;
-        for (; g; g >>= 1) {
-            b ^= g;
-        }
-        return b;
+    static constexpr int calculate_bits_per_symbol(int levels) {
+        if (levels == 4) return 2;
+        if (levels == 16) return 4;
+        if (levels == 64) return 6;
+        throw std::logic_error(
+            "Invalid levels value for BitsPerSymbol calculation");
     }
 
-    std::pmr::polymorphic_allocator<T> alloc_;         ///< Memory allocator
-    std::pmr::vector<std::pair<T, T>> constellation_;  ///< Constellation points
-    std::pmr::vector<std::pmr::vector<bool>>
-        bit_patterns_;  ///< Bit patterns for each constellation point
-};
+    void generateConstellation() {
+        constellation_.clear();
+        constellation_.reserve(levels_count_);
 
-// --- Specializations for constellation generation ---
-
-/**
- * @brief Specialization: Generate constellation points for QAM schemes.
- *
- * Handles QPSK (4-QAM), 16-QAM and 64-QAM with Gray code mapping.
- */
-template <int Levels, Numeric T>
-void DemodulatorQAM<Levels, T>::generateConstellation() {
-    constellation_.clear();
-    if constexpr (Levels == 4) {
-        // QPSK with natural Gray coding
-        constellation_ = {{+1, +1}, {-1, +1}, {-1, -1}, {+1, -1}};
-    } else if constexpr (Levels == 16) {
-        // 16-QAM with Gray coding
-        const int pam_levels[] = {-3, -1, 1, 3};
-        for (int idx = 0; idx < Levels; ++idx) {
-            int upper_bits = (idx >> 2) & 0x03;
-            int lower_bits = idx & 0x03;
-            int gray_upper = upper_bits ^ (upper_bits >> 1);
-            int gray_lower = lower_bits ^ (lower_bits >> 1);
-            T re = static_cast<T>(pam_levels[gray_upper]);
-            T im = static_cast<T>(pam_levels[gray_lower]);
-            constellation_.emplace_back(re, im);
-        }
-    } else if constexpr (Levels == 64) {
-        // 64-QAM with Gray coding
-        const int pam_levels[] = {-7, -5, -3, -1, 1, 3, 5, 7};
-        for (int idx = 0; idx < Levels; ++idx) {
-            int gray_j = (idx >> 3) & 0x07;
-            int gray_i = idx & 0x07;
-            int j = from_gray(gray_j);
-            int i = from_gray(gray_i);
-            T re = static_cast<T>(pam_levels[j]);
-            T im = static_cast<T>(pam_levels[i]);
-            constellation_.emplace_back(re, im);
-        }
-    }
-}
-
-/**
- * @brief Specialization: Generate binary bit patterns for constellation points.
- */
-template <int Levels, Numeric T>
-void DemodulatorQAM<Levels, T>::generateBitPatterns() {
-    bit_patterns_.clear();
-    bit_patterns_.reserve(Levels);
-    for (int i = 0; i < Levels; ++i) {
-        std::pmr::vector<bool> pattern(alloc_);
-        pattern.resize(BitsPerSymbol);
-        for (int j = 0; j < BitsPerSymbol; ++j) {
-            int bit_pos = BitsPerSymbol - 1 - j;
-            pattern[j] = (i >> bit_pos) & 1;
-        }
-        bit_patterns_.push_back(pattern);
-    }
-}
-
-/**
- * @brief Specialization: Hard demodulation implementation.
- *
- * For each received symbol, finds the closest constellation point and appends
- * its bit pattern.
- *
- * @param symbols Received symbols
- * @return Vector of demodulated bits
- */
-template <int Levels, Numeric T>
-std::pmr::vector<uint8_t> DemodulatorQAM<Levels, T>::demodulate_hard(
-    std::span<const std::pair<T, T>> symbols) const {
-    std::pmr::vector<uint8_t> bits(alloc_);
-    for (const auto& s : symbols) {
-        int best_idx = 0;
-        float best_dist = distance_squared(s, constellation_[0]);
-        for (size_t idx = 1; idx < Levels; ++idx) {
-            float dist = distance_squared(s, constellation_[idx]);
-            if (dist < best_dist) {
-                best_dist = dist;
-                best_idx = idx;
+        if (levels_count_ == 4) {  // QPSK
+            constellation_.emplace_back(1.0f, 1.0f);
+            constellation_.emplace_back(-1.0f, 1.0f);
+            constellation_.emplace_back(-1.0f, -1.0f);
+            constellation_.emplace_back(1.0f, -1.0f);
+        } else if (levels_count_ == 16) {  // 16-QAM
+            const value_type pam_levels_arr[] = {-3.0f, -1.0f, 1.0f, 3.0f};
+            for (int index = 0; index < levels_count_; ++index) {
+                int val_x_bits = (index >> (bits_per_symbol_ / 2));
+                int val_y_bits = (index & ((1 << (bits_per_symbol_ / 2)) - 1));
+                int gray_idx_x = val_x_bits ^ (val_x_bits >> 1);
+                int gray_idx_y = val_y_bits ^ (val_y_bits >> 1);
+                constellation_.emplace_back(pam_levels_arr[gray_idx_x],
+                                            pam_levels_arr[gray_idx_y]);
+            }
+        } else if (levels_count_ == 64) {  // 64-QAM
+            const value_type pam_levels_arr[] = {-7.0f, -5.0f, -3.0f, -1.0f,
+                                                 1.0f,  3.0f,  5.0f,  7.0f};
+            for (int index = 0; index < levels_count_; ++index) {
+                int val_x_bits = (index >> (bits_per_symbol_ / 2));
+                int val_y_bits = (index & ((1 << (bits_per_symbol_ / 2)) - 1));
+                int gray_idx_x = val_x_bits ^ (val_x_bits >> 1);
+                int gray_idx_y = val_y_bits ^ (val_y_bits >> 1);
+                constellation_.emplace_back(pam_levels_arr[gray_idx_x],
+                                            pam_levels_arr[gray_idx_y]);
             }
         }
-        for (int j = 0; j < BitsPerSymbol; ++j) {
-            bits.push_back(bit_patterns_[best_idx][j] ? 1 : 0);
+    }
+
+    void generateBitPatterns() {
+        bit_patterns_.clear();
+        bit_patterns_.resize(levels_count_,
+                             std::vector<bool>(bits_per_symbol_));
+        for (int i = 0; i < levels_count_; ++i) {
+            for (int j = 0; j < bits_per_symbol_; ++j) {
+                bit_patterns_[i][j] = (i >> (bits_per_symbol_ - 1 - j)) & 1;
+            }
         }
     }
-    return bits;
-}
+
+    const int levels_count_;
+    const int bits_per_symbol_;
+    std::vector<std::pair<value_type, value_type>> constellation_;
+    std::vector<std::vector<bool>> bit_patterns_;
+};

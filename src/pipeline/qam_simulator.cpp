@@ -83,6 +83,8 @@ void simulate_mod(const std::string& name, const SimulationParams& p) {
     }
 
     std::vector<std::thread> threads;
+    ModulatorQAM<M, T> mod;
+    DemodulatorQAM<M, T> demod;
 
     for (int t = 0; t < p.num_threads; ++t) {
         unsigned seed = std::chrono::high_resolution_clock::now()
@@ -92,8 +94,6 @@ void simulate_mod(const std::string& name, const SimulationParams& p) {
 
         threads.emplace_back([&, seed]() {
             std::mt19937 rng(seed);
-            ModulatorQAM<M, T> mod;
-            DemodulatorQAM<M, T> demod;
 
             for (size_t i = 0; i < snrs.size(); ++i) {
                 NoiseAdder<T> noise(snrs[i]);
